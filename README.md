@@ -4,6 +4,12 @@ Generative music for Claude Code. Every task gets its own tune, and the mood fol
 
 miod is a Claude Code mod (MIDI + mod). It listens to the session while Claude works and plays short phrases of music it writes on the spot. No music files, no library, no AI model: the notes are worked out in code and turned into audio.
 
+## Why I made this
+
+I'm an engineer, but these days I solve the boring problems entirely by vibe coding. Somewhere along the way I felt I had lost the creativity and curiosity I used to have when writing code myself.
+
+So I started thinking about how to make vibe coding fun again. miod is the first try: while the agent does the work, you get to hear it think, read, edit, fail and fix, with a little piece of music no one has heard before.
+
 ## What it does
 
 - **A new tune for every task.** Each prompt picks its own key, scale, tempo, sound and theme, so no two tasks sound alike.
