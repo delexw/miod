@@ -1,0 +1,18 @@
+{
+  "name": "miod",
+  "owner": {
+    "name": "Yang Liu",
+    "email": "adamyoungliu@gmail.com"
+  },
+  "metadata": {
+    "description": "Generative music for Claude Code."
+  },
+  "plugins": [
+    {
+      "name": "miod",
+      "source": "./",
+      "description": "Generative music for Claude Code. Every task gets its own tune, and the mood follows what the agent is doing and how fast it spends tokens.",
+      "tags": ["mod", "music", "generative-music", "midi"]
+    }
+  ]
+}

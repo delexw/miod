@@ -1,0 +1,10 @@
+{
+  "name": "miod",
+  "version": "0.1.0",
+  "description": "Generative music for Claude Code. Every task gets its own tune, and the mood follows what the agent is doing and how fast it spends tokens.",
+  "author": {
+    "name": "Yang Liu",
+    "email": "adamyoungliu@gmail.com"
+  },
+  "types": "./types/index.d.ts"
+}
