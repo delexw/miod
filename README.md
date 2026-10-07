@@ -22,9 +22,9 @@ A Claude Code mod (MIDI + mod) that writes music on the spot while Claude works.
 - Every task picks its own flavour (lo-fi, chiptune, ambient, jazzy and 8 more), key, scale (16 of them), chord progression, tempo, sound and theme.
 - The mood follows what the agent is doing. Every mood has 10 variants, and a new one is picked as the task goes: whenever the activity changes, and every 4 phrases. The task's flavour bends it too, so editing in a lo-fi task sounds nothing like editing in a chiptune one.
 - The faster it spends tokens, the busier the music.
-- One line above the prompt shows the mood, flavour, key, tempo and energy, with a wave that moves with each phrase, coloured by mood:
+- Above the prompt, one line shows the mood, flavour, key, tempo and energy, with a wave under it that scrolls with the music, coloured by mood:
 
-![miod's wave line](docs/miod-wave.png)
+![miod's status line and moving wave](docs/miod-wave.gif)
 - Tasks flow into each other: the next task fades in, in a related key. If no new task comes, a closing chord fades out at the end of the phrase.
 
 ## Install
