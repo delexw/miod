@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import { composePhrase } from '../hooks/compose'
+import { MOODS } from '../hooks/moods'
 import { loudness, renderClip, SAMPLE_RATE, WAVE_POINTS_PER_SECOND } from '../hooks/synth'
 import { startTask } from '../hooks/task'
 import { barFor, drawWave } from '../hooks/wave'
@@ -33,7 +34,11 @@ describe('wave', () => {
 
   test('a rendered clip carries its wave', async () => {
     const task = startTask('anything', 0)
-    const clip = renderClip(task.style, composePhrase(task, 0, { activity: 'editing', energy: 0.5, contextFill: 0, toolCalls: 0, helpers: 0 }), 2, task.seed)
+    const mood = MOODS.editing[0]
+    if (!mood) {
+      throw new Error('editing has no variants')
+    }
+    const clip = renderClip(task.style, composePhrase(task, 0, { mood, energy: 0.5, contextFill: 0, toolCalls: 0, helpers: 0 }), 2, task.seed)
 
     expect(clip.levels.length).toBe(2 * WAVE_POINTS_PER_SECOND)
     expect(Math.max(...clip.levels)).toBeGreaterThan(0)

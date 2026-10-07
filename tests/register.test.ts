@@ -4,7 +4,6 @@ import type { EventCalls, On } from 'claude-code'
 function standInForEngine(on: On) {
   on('turn.start', ($, e) => ({ turnId: e.turnId }))
   on('turn.complete', ($, e) => ({ text: e.answer }))
-  on('ui.status', () => ({ value: undefined }))
   on('tool.call', () => ({ result: {}, text: 'ok' }))
 }
 

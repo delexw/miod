@@ -50,7 +50,7 @@ function keyNear(midi: number): number {
 }
 
 export function describeTask(task: Task): string {
-  return `${task.flavour.name}, ${noteName(task.root)} ${task.homeScale}, ${task.tempo} bpm`
+  return `${task.flavour.name} · ${noteName(task.root)} ${task.homeScale} · ${task.tempo} bpm`
 }
 
 export function phraseSeconds(task: Task): number {

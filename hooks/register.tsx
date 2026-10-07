@@ -6,7 +6,9 @@ import type { Activity } from './activity'
 import { drawBand } from './band'
 import { composeFinish, composeFixed, composePhrase, energyFromRate } from './compose'
 import type { Moment, Note } from './compose'
-import { MOODS } from './moods'
+import { nextMood } from './moods'
+import type { MoodChoice } from './moods'
+import { seededRandom } from './random'
 import { renderClip, toBase64, WAVE_POINTS_PER_SECOND } from './synth'
 import type { Fade } from './synth'
 import { describeTask, phraseSeconds, startTask } from './task'
@@ -25,14 +27,14 @@ type Spend = { at: number; tokens: number }
 
 type Look = { label: string; color: string }
 
-type PlayOptions = { fade?: Fade; shouldOverlap?: boolean }
+type PlayOptions = { fade?: Fade }
 
 type Session = {
   task: Task | null
   turnId: string | null
   phraseNumber: number
   ticker: Timer | null
-  playing: AbortController | null
+  playing: Set<AbortController>
   spends: Spend[]
   toolCalls: number
   contextFill: number
@@ -41,6 +43,7 @@ type Session = {
   helpers: number
   clipCount: number
   lastTask: Task | null
+  moodChoice: MoodChoice | null
   phraseEndsAt: number
   finishTimer: Timer | null
 }
@@ -50,7 +53,7 @@ const session: Session = {
   turnId: null,
   phraseNumber: 0,
   ticker: null,
-  playing: null,
+  playing: new Set(),
   spends: [],
   toolCalls: 0,
   contextFill: 0,
@@ -59,22 +62,26 @@ const session: Session = {
   helpers: 0,
   clipCount: 0,
   lastTask: null,
+  moodChoice: null,
   phraseEndsAt: 0,
   finishTimer: null,
 }
 
 function play($: EngineInterface, task: Task, notes: Note[], seconds: number, look: Look, options: PlayOptions = {}) {
-  if (!options.shouldOverlap) {
-    session.playing?.abort()
-  }
   const controller = new AbortController()
-  session.playing = controller
+  session.playing.add(controller)
   const clip = renderClip(task.style, notes, seconds, task.seed, options.fade)
   session.clipCount += 1
   showWave($, { clipId: session.clipCount, ...look, levels: clip.levels, pointsPerSecond: WAVE_POINTS_PER_SECOND })
   $.audio
     .play({ base64: toBase64(clip.wav), mime: 'audio/wav' }, { gain: GAIN, signal: controller.signal })
-    .catch(() => $.ui.status('miod: could not play audio'))
+    .catch(() => $.ui.toast('miod: could not play audio'))
+    .finally(() => session.playing.delete(controller))
+}
+
+function silence() {
+  session.playing.forEach(controller => controller.abort())
+  session.playing.clear()
 }
 
 function showWave($: EngineInterface, clip: NowPlaying | null) {
@@ -87,8 +94,11 @@ async function readMoment($: EngineInterface, now: number): Promise<Moment> {
   const elapsed = Math.max(10_000, now - (session.spends[0]?.at ?? now))
   const seen = session.isFailing ? ['failing' as const] : session.seenThisPhrase
 
+  const task = session.task
+  const random = seededRandom((task?.seed ?? 0) + session.phraseNumber * 7919)
+  session.moodChoice = nextMood(session.moodChoice, strongestActivity(seen), random)
   const moment: Moment = {
-    activity: strongestActivity(seen),
+    mood: session.moodChoice.mood,
     energy: energyFromRate((tokens * 60_000) / elapsed),
     contextFill: session.contextFill,
     toolCalls: session.toolCalls,
@@ -106,17 +116,15 @@ async function playNextPhrase($: EngineInterface) {
   }
   const now = await $.clock.now()
   const moment = await readMoment($, now)
-  const mood = MOODS[moment.activity]
+  const mood = moment.mood
   const seconds = phraseSeconds(task)
   const isFirst = session.phraseNumber === 0
-  const look = { label: `${mood.feel} · ${describeTask(task)}`, color: mood.color }
+  const look = { label: `${mood.feel} · ${describeTask(task)} · energy ${Math.round(moment.energy * 100)}%`, color: mood.color }
   play($, task, composePhrase(task, session.phraseNumber, moment), seconds, look, {
     fade: isFirst ? { inSeconds: seconds / 2 } : undefined,
-    shouldOverlap: isFirst,
   })
   session.phraseNumber += 1
   session.phraseEndsAt = now + seconds * 1000
-  $.ui.status(`♪ ${describeTask(task)}, ${mood.feel}, energy ${Math.round(moment.energy * 100)}%`)
 }
 
 async function startMusic($: EngineInterface, prompt: string, turnId: string) {
@@ -132,6 +140,7 @@ async function startMusic($: EngineInterface, prompt: string, turnId: string) {
     seenThisPhrase: [],
     isFailing: false,
     helpers: 0,
+    moodChoice: null,
   })
   await playNextPhrase($)
   session.ticker = $.clock.every(Math.round(phraseSeconds(task) * 1000), () => {
@@ -150,12 +159,11 @@ async function stopMusic($: EngineInterface, shouldPlayFinish: boolean) {
     const wait = Math.max(0, session.phraseEndsAt - (await $.clock.now()))
     session.finishTimer = $.clock.after(Math.round(wait), () => playFinish($, task))
   } else {
-    session.playing?.abort()
+    silence()
     showWave($, null)
   }
   session.task = null
   session.turnId = null
-  $.ui.status(undefined)
 }
 
 function playFinish($: EngineInterface, task: Task) {

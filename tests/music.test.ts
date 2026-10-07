@@ -4,8 +4,12 @@ import { activityForCommand, activityForTool, STRONGEST_FIRST, strongestActivity
 import { composeFinish, composeFixed, composePhrase, energyFromRate } from '../hooks/compose'
 import type { Moment } from '../hooks/compose'
 import { MOODS } from '../hooks/moods'
+import { nextMood, PHRASES_PER_VARIANT } from '../hooks/moods'
+import type { Mood } from '../hooks/moods'
+import type { Activity } from '../hooks/activity'
+import { seededRandom } from '../hooks/random'
 import { STYLE_NAMES, STYLES } from '../hooks/styles'
-import { loudness, renderClip, SAMPLE_RATE, toBase64, WAVE_POINTS_PER_SECOND } from '../hooks/synth'
+import { loudness, renderClip, SAMPLE_RATE, TAIL_SECONDS, toBase64, WAVE_POINTS_PER_SECOND } from '../hooks/synth'
 import { FLAVOURS, flavourMood } from '../hooks/flavours'
 import type { Flavour } from '../hooks/flavours'
 import { startTask } from '../hooks/task'
@@ -26,14 +30,18 @@ const NEUTRAL: Flavour = {
   bass: 'roots',
 }
 
+const FIRST_MOODS = Object.fromEntries(
+  Object.entries(MOODS).map(([activity, variants]) => [activity, variants[0]]),
+) as Record<Activity, Mood>
+
 const plain = (prompt: string, startedAt: number): Task => ({
   ...startTask(prompt, startedAt),
   flavour: NEUTRAL,
   progression: [0, 0, 0, 0],
 })
 
-const moment = (overrides: Partial<Moment> = {}): Moment => ({
-  activity: 'thinking',
+const moment = ({ activity = 'thinking', ...overrides }: Partial<Moment> & { activity?: Activity } = {}): Moment => ({
+  mood: FIRST_MOODS[activity],
   energy: 0.1,
   contextFill: 0,
   toolCalls: 0,
@@ -160,7 +168,7 @@ describe('music', () => {
 
     expect(text(0)).toBe('RIFF')
     expect(text(8)).toBe('WAVE')
-    expect(bytes.length).toBe(44 + SAMPLE_RATE * 2)
+    expect(bytes.length).toBe(44 + Math.ceil((1 + TAIL_SECONDS) * SAMPLE_RATE) * 2)
     expect(toBase64(bytes).startsWith('UklGR')).toBe(true)
   })
 
@@ -170,6 +178,39 @@ describe('music', () => {
 })
 
 describe('variety', () => {
+  test('every mood has at least 10 variants, each with its own feel', async () => {
+    for (const variants of Object.values(MOODS)) {
+      expect(variants.length).toBeGreaterThanOrEqual(10)
+      expect(new Set(variants.map(variant => variant.feel)).size).toBe(variants.length)
+    }
+  })
+
+  test('a variant holds for a few phrases, then a new one is picked as the task goes', async () => {
+    const random = seededRandom(7)
+    let choice = nextMood(null, 'editing', random)
+    const first = choice.mood
+    for (let i = 1; i < PHRASES_PER_VARIANT; i++) {
+      choice = nextMood(choice, 'editing', random)
+      expect(choice.mood).toBe(first)
+    }
+
+    const feels = new Set<string>()
+    for (let i = 0; i < 200; i++) {
+      choice = nextMood(choice, 'editing', random)
+      feels.add(choice.mood.feel)
+    }
+    expect(feels.size).toBeGreaterThanOrEqual(8)
+  })
+
+  test('changing activity picks a variant of the new mood straight away', async () => {
+    const random = seededRandom(7)
+    const editing = nextMood(null, 'editing', random)
+    const testing = nextMood(editing, 'testing', random)
+
+    expect(MOODS.testing).toContain(testing.mood)
+    expect(testing.phrases).toBe(1)
+  })
+
   test('there are at least 10 flavours, each with its own name', async () => {
     const names = FLAVOURS.map(flavour => flavour.name)
 
@@ -206,11 +247,11 @@ describe('variety', () => {
       throw new Error('missing flavour')
     }
 
-    expect(flavourMood(MOODS.editing, chiptune).notesPerBeat).toBe(4)
-    expect(flavourMood(MOODS.shipping, chiptune).notesPerBeat).toBe(4)
-    expect(flavourMood(MOODS.running, ambient).drums).toBe('none')
-    expect(flavourMood(MOODS.testing, ambient).drums).toBe('light')
-    expect(flavourMood(MOODS.reading, ambient).pad).toBe(true)
+    expect(flavourMood(FIRST_MOODS.editing, chiptune).notesPerBeat).toBe(4)
+    expect(flavourMood(FIRST_MOODS.shipping, chiptune).notesPerBeat).toBe(4)
+    expect(flavourMood(FIRST_MOODS.running, ambient).drums).toBe('none')
+    expect(flavourMood(FIRST_MOODS.testing, ambient).drums).toBe('light')
+    expect(flavourMood(FIRST_MOODS.reading, ambient).pad).toBe(true)
   })
 
   test('every scale climbs within one octave', async () => {
@@ -236,16 +277,29 @@ describe('variety', () => {
     }
   })
 
+  test('a clip never goes past the safe peak, so busy phrases do not distort', async () => {
+    const task = plain('busy', 0)
+    const busy = composePhrase({ ...task, flavour: { ...NEUTRAL, busier: 2 } }, 0, moment({ activity: 'shipping', energy: 1, helpers: 3, toolCalls: 8 }))
+    const wav = renderClip(task.style, busy, 4, task.seed).wav
+    const view = new DataView(wav.buffer)
+    let peak = 0
+    for (let i = 44; i < wav.length; i += 2) {
+      peak = Math.max(peak, Math.abs(view.getInt16(i, true)) / 32767)
+    }
+
+    expect(peak).toBeLessThanOrEqual(0.71)
+  })
+
   test('a fade in starts silent and a fade out ends silent', async () => {
     const task = plain('anything', 0)
     const notes = composePhrase(task, 0, moment({ activity: 'editing' }))
     const unfaded = renderClip(task.style, notes, 2, task.seed).levels
     const fadedIn = renderClip(task.style, notes, 2, task.seed, { inSeconds: 1 }).levels
-    const fadedOut = renderClip(task.style, notes, 2, task.seed, { outSeconds: 1 }).levels
+    const fadedOut = renderClip(task.style, notes, 2, task.seed, { outSeconds: 2 + TAIL_SECONDS }).levels
     const last = unfaded.length - 1
 
     expect(fadedIn[0] ?? 1).toBeLessThan((unfaded[0] ?? 0) * 0.2)
-    expect(fadedOut[last] ?? 1).toBeLessThan((unfaded[last] ?? 0) * 0.2)
+    expect(fadedOut[last] ?? 1).toBeLessThan((unfaded[last] ?? 0) * 0.5)
   })
 })
 

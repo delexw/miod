@@ -12,7 +12,9 @@ export function drawBand(elements: ElementTable, clip: NowPlaying, below: Render
   return (
     <Box flexDirection="column">
       <Box>
-        <Text color={clip.color}>♪ {clip.label} </Text>
+        <Box flexShrink={0}>
+          <Text color={clip.color}>♪ {clip.label} </Text>
+        </Box>
         {wave}
       </Box>
       {below}

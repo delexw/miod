@@ -1,7 +1,5 @@
-import type { Activity } from './activity'
 import { flavourMood } from './flavours'
 import type { Bass } from './flavours'
-import { MOODS } from './moods'
 import type { Drums, Mood } from './moods'
 import { at, seededRandom } from './random'
 import { BEATS_PER_PHRASE } from './task'
@@ -10,7 +8,7 @@ import { brighten, midiToFrequency, scaleStepToMidi } from './theory'
 import type { ScaleName } from './theory'
 
 export type Moment = {
-  activity: Activity
+  mood: Mood
   energy: number
   contextFill: number
   toolCalls: number
@@ -38,7 +36,7 @@ export function energyFromRate(tokensPerMinute: number): number {
 }
 
 export function composePhrase(task: Task, phraseNumber: number, moment: Moment): Note[] {
-  const mood = flavourMood(MOODS[moment.activity], task.flavour)
+  const mood = flavourMood(moment.mood, task.flavour)
   const random = seededRandom(task.seed ^ Math.imul(phraseNumber + 1, 0x9e3779b1))
   const scale = brighten(scaleFor(task, mood), task.flavour.brightness)
   const octave = mood.octave + (moment.contextFill > 0.6 ? 1 : 0)

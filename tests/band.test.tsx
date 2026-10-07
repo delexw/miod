@@ -16,7 +16,6 @@ const BAND = {
 
 function standInForEngine(on: On) {
   on('turn.start', ($, e) => ({ turnId: e.turnId }))
-  on('ui.status', () => ({ value: undefined }))
   on('audio.play', () => ({ value: undefined }))
   on('ui.render', { component: 'AbovePrompt' }, ($, e) => {
     const { Box } = $.ui.resolve(e)
