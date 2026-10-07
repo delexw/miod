@@ -11,7 +11,7 @@ I'm an engineer, but these days I solve the boring problems entirely by vibe cod
 
 So I started thinking about how to make vibe coding fun again. miod is the first try: while the agent does the work, you get to hear it think, read, edit, fail and fix, with a little piece of music no one has heard before.
 
-Feel free to add more moods, flavours and styles. Each mood is one row in `hooks/moods.ts`, each flavour one row in `hooks/flavours.ts`, and each sound style one entry in `hooks/styles.ts`.
+Feel free to add more moods, flavours and styles. Each mood is one row in `hooks/moods.ts`, each flavour one row in `hooks/flavours.ts`, each sound style one entry in `hooks/styles.ts`, and each wave look one file in `hooks/waves/`.
 
 Feeling it's a bit too noisy? 🙉 No hard feelings. Just [turn it off](#usage) with `/miod off`.
 
@@ -44,6 +44,8 @@ Then start a new session.
 /miod        is it on or off?
 /miod off    stop the music
 /miod on     play again from the next task
+/miod wave   list the wave looks: bars, line, mirror, dots, pulse
+/miod wave dots   switch the wave to the dots look
 ```
 
 ## How the mood is picked
@@ -76,6 +78,7 @@ The scales follow how musicians describe each mode ([musical-u](https://www.musi
 - **New mood:** add the name to `Activity` and `STRONGEST_FIRST` in `hooks/activity.ts`, map tools or commands to it there, and give it a list of at least 10 variants in `MOODS`.
 - **Flavour:** add a row to `FLAVOURS` in `hooks/flavours.ts`. Each field nudges every mood: brighter or darker scale, busier or calmer, drums up or down, swing, bass line.
 - **Scale or chords:** add to `SCALES` or `PROGRESSIONS` in `hooks/theory.ts`.
+- **Wave look:** add a file to `hooks/waves/` that exports a `WaveLook` (how many rows, and a `draw` function), then list it in `WAVES` in `hooks/waves/index.ts`.
 - **Style:** add a wave function to `STYLES` in `hooks/styles.ts`. It must return values between -1 and 1.
 
 Then check it:

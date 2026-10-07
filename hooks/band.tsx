@@ -1,12 +1,13 @@
 import type { ElementTable, RenderElement } from 'claude-code'
 
 import type { NowPlaying } from '../types'
+import { waveLook } from './waves'
 
-export function drawBand(elements: ElementTable, clip: NowPlaying, below: RenderElement): RenderElement {
+export function drawBand(elements: ElementTable, clip: NowPlaying, waveName: string, below: RenderElement): RenderElement {
   const { Box, Text } = elements
-  const wave =
+  const waveElement =
     'Client' in elements ? (
-      <elements.Client key="miod-wave" module="./wave.tsx" props={clip} height={1} flexGrow={1} />
+      <elements.Client key="miod-wave" module="./wave.tsx" props={{ ...clip, wave: waveName }} height={waveLook(waveName).rows} flexGrow={1} />
     ) : null
 
   return (
@@ -15,7 +16,7 @@ export function drawBand(elements: ElementTable, clip: NowPlaying, below: Render
         <Box flexShrink={0}>
           <Text color={clip.color}>♪ {clip.label} </Text>
         </Box>
-        {wave}
+        {waveElement}
       </Box>
       {below}
     </Box>

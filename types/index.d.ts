@@ -6,8 +6,10 @@ export type NowPlaying = {
   pointsPerSecond: number
 }
 
+export type WaveProps = NowPlaying & { wave: string }
+
 declare module 'claude-code' {
   interface PluginState {
-    miod: { isEnabled: boolean; nowPlaying: NowPlaying | null }
+    miod: { isEnabled: boolean; nowPlaying: NowPlaying | null; wave: string }
   }
 }

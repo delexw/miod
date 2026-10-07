@@ -12,11 +12,13 @@ import { seededRandom } from './random'
 import { renderClip, toBase64, WAVE_POINTS_PER_SECOND } from './synth'
 import type { Fade } from './synth'
 import { describeTask, phraseSeconds, startTask } from './task'
+import { DEFAULT_WAVE, isWaveName, WAVE_NAMES } from './waves'
 import type { Task } from './task'
 import type { NowPlaying } from '../types'
 
 const isEnabled = atom({ plugin: 'miod', key: 'isEnabled' } as const, true)
 const nowPlaying = atom({ plugin: 'miod', key: 'nowPlaying' } as const, null)
+const chosenWave = atom({ plugin: 'miod', key: 'wave' } as const, DEFAULT_WAVE)
 
 const RATE_WINDOW_MS = 60_000
 const GAIN = 0.6
@@ -207,14 +209,21 @@ export const register: Register = on => {
     await $.command.register({
       name: 'miod',
       description: 'Turn the task music on or off.',
-      argumentHint: '[on|off]',
+      argumentHint: '[on|off|wave <name>]',
       immediate: true,
     })
     return next(e)
   })
 
   on('command.run', { command: 'miod' }, async ($, e) => {
-    const choice = e.args.trim().toLowerCase()
+    const [choice = '', name = ''] = e.args.trim().toLowerCase().split(/\s+/)
+    if (choice === 'wave') {
+      if (!isWaveName(name)) {
+        return { text: `miod waves: ${WAVE_NAMES.join(', ')}. Now: ${await read($, chosenWave)}. Use /miod wave <name>.` }
+      }
+      await update($, chosenWave, () => name)
+      return { text: `miod wave is ${name}.` }
+    }
     if (choice === 'on' || choice === 'off') {
       await update($, isEnabled, () => choice === 'on')
       if (choice === 'off') {
@@ -223,7 +232,7 @@ export const register: Register = on => {
       return { text: `miod is ${choice}.` }
     }
     const state = (await read($, isEnabled)) ? 'on' : 'off'
-    return { text: `miod is ${state}. Use /miod on or /miod off.` }
+    return { text: `miod is ${state}. Use /miod on, /miod off, or /miod wave <name>.` }
   })
 
   on('turn.start', async ($, e, next) => {
@@ -292,7 +301,7 @@ export const register: Register = on => {
     if (!clip || e.props.hasSurvey) {
       return below
     }
-    return drawBand($.ui.resolve(e), clip, below)
+    return drawBand($.ui.resolve(e), clip, await read($, chosenWave), below)
   })
 
   on('session.end', async ($, e, next) => {
