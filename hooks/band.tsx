@@ -8,8 +8,7 @@ const WAVE_MIN_COLUMNS = 12
 
 export function drawBand(elements: ElementTable, clip: NowPlaying, waveName: string, columns: number, below: RenderElement): RenderElement {
   const { Box, Text } = elements
-  const label = `♪ ${clip.label} `
-  const waveColumns = Math.min(WAVE_MAX_COLUMNS, columns - label.length)
+  const waveColumns = Math.min(WAVE_MAX_COLUMNS, columns)
   const waveElement =
     'Client' in elements && waveColumns >= WAVE_MIN_COLUMNS ? (
       <elements.Client
@@ -23,12 +22,10 @@ export function drawBand(elements: ElementTable, clip: NowPlaying, waveName: str
 
   return (
     <Box flexDirection="column">
-      <Box>
-        <Box flexShrink={0}>
-          <Text color={clip.color}>{label}</Text>
-        </Box>
-        {waveElement}
-      </Box>
+      <Text color={clip.color} wrap="truncate-end">
+        ♪ {clip.label}
+      </Text>
+      {waveElement}
       {below}
     </Box>
   )
