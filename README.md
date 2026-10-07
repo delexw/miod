@@ -10,6 +10,8 @@ So I started thinking about how to make vibe coding fun again. miod is the first
 
 Feel free to add more moods and styles. Each mood is one row in `hooks/moods.ts`, and each sound style is one entry in `hooks/styles.ts`.
 
+Feeling it's a bit too noisy? 🙉 No hard feelings. Just [turn it off](#usage) with `/miod off`.
+
 ## What miod is
 
 Generative music for Claude Code. Every task gets its own tune, and the mood follows what the agent is doing and how fast it spends tokens.
