@@ -52,7 +52,7 @@ test('/miod wave switches the look and lists the choices', async ($, on) => {
   expect(list.text).toContain('bars, line, mirror, dots, pulse')
 
   const chosen = await $.command.run({ command: 'miod', args: 'wave dots' } as Parameters<typeof $.command.run>[0])
-  expect(chosen.text).toBe('miod wave is dots.')
+  expect(chosen.text).toBe('wave is dots.')
 
   await $.turn.start({ text: 'anything', turnId: 'turn-2' })
   for (const surface of ['terminal', 'desktop'] as const) {

@@ -1,4 +1,4 @@
-import { clamp, playedCount, resample, splitRow } from './shared'
+import { clamp, scrollingWindow, splitRow } from './shared'
 import type { WaveLook } from './shared'
 
 const BLOCKS = '▁▂▃▄▅▆▇█'
@@ -14,8 +14,7 @@ export const bars: WaveLook = {
   rows: ROWS,
   draw: (levels, width, played) => {
     const count = Math.max(1, Math.floor(width / 2))
-    const heights = resample(levels, count)
-    const split = playedCount(levels, played, count)
+    const { heights, split } = scrollingWindow(levels, count, played)
     return Array.from({ length: ROWS }, (_, row) => splitRow(heights.map(level => `${barCell(level, row)} `), split))
   },
 }

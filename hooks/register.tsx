@@ -219,20 +219,20 @@ export const register: Register = on => {
     const [choice = '', name = ''] = e.args.trim().toLowerCase().split(/\s+/)
     if (choice === 'wave') {
       if (!isWaveName(name)) {
-        return { text: `miod waves: ${WAVE_NAMES.join(', ')}. Now: ${await read($, chosenWave)}. Use /miod wave <name>.` }
+        return { text: `waves: ${WAVE_NAMES.join(', ')}. Now: ${await read($, chosenWave)}. Use /miod wave <name>.` }
       }
       await update($, chosenWave, () => name)
-      return { text: `miod wave is ${name}.` }
+      return { text: `wave is ${name}.` }
     }
     if (choice === 'on' || choice === 'off') {
       await update($, isEnabled, () => choice === 'on')
       if (choice === 'off') {
         await stopMusic($, false)
       }
-      return { text: `miod is ${choice}.` }
+      return { text: `${choice}.` }
     }
     const state = (await read($, isEnabled)) ? 'on' : 'off'
-    return { text: `miod is ${state}. Use /miod on, /miod off, or /miod wave <name>.` }
+    return { text: `${state}. Use /miod on, /miod off, or /miod wave <name>.` }
   })
 
   on('turn.start', async ($, e, next) => {
@@ -301,7 +301,7 @@ export const register: Register = on => {
     if (!clip || e.props.hasSurvey) {
       return below
     }
-    return drawBand($.ui.resolve(e), clip, await read($, chosenWave), below)
+    return drawBand($.ui.resolve(e), clip, await read($, chosenWave), e.props.bodyColumns, below)
   })
 
   on('session.end', async ($, e, next) => {

@@ -4,7 +4,7 @@ import { STYLES } from './styles'
 import type { Style } from './styles'
 
 export const SAMPLE_RATE = 22050
-export const WAVE_POINTS_PER_SECOND = 10
+export const WAVE_POINTS_PER_SECOND = 20
 export const TAIL_SECONDS = 0.8
 
 const PEAK = 0.7
@@ -58,11 +58,12 @@ function applyFade(samples: Float32Array, { inSeconds = 0, outSeconds = 0 }: Fad
 }
 
 export function loudness(samples: Float32Array): number[] {
-  const size = Math.floor(SAMPLE_RATE / WAVE_POINTS_PER_SECOND)
+  const size = SAMPLE_RATE / WAVE_POINTS_PER_SECOND
   const levels: number[] = []
-  for (let start = 0; start < samples.length; start += size) {
+  for (let point = 0; Math.round(point * size) < samples.length; point++) {
+    const start = Math.round(point * size)
+    const end = Math.min(samples.length, Math.round((point + 1) * size))
     let sum = 0
-    const end = Math.min(samples.length, start + size)
     for (let i = start; i < end; i++) {
       sum += (samples[i] ?? 0) ** 2
     }

@@ -72,7 +72,7 @@ test('/miod off keeps tasks silent', async ($, on) => {
   })
 
   const { text } = await $.command.run({ command: 'miod', args: 'off' } as Parameters<typeof $.command.run>[0])
-  expect(text).toBe('miod is off.')
+  expect(text).toBe('off.')
 
   await $.turn.start({ text: 'anything', turnId: 'turn-2' })
   expect(plays.length).toBe(0)
