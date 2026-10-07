@@ -1,8 +1,10 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { activityForCommand, activityForTool, strongestActivity } from '../hooks/activity'
+import { activityForCommand, activityForTool, STRONGEST_FIRST, strongestActivity } from '../hooks/activity'
 import { composeFinish, composeFixed, composePhrase, energyFromRate } from '../hooks/compose'
 import type { Moment } from '../hooks/compose'
+import { MOODS } from '../hooks/moods'
+import { STYLE_NAMES, STYLES } from '../hooks/styles'
 import { renderWav, SAMPLE_RATE, toBase64 } from '../hooks/synth'
 import { startTask } from '../hooks/task'
 
@@ -25,6 +27,21 @@ describe('what the agent is doing', () => {
     expect(activityForTool('Agent')).toBe('delegating')
     expect(activityForCommand('bun run test')).toBe('testing')
     expect(activityForCommand('git status')).toBe('running')
+    expect(activityForTool('WebSearch')).toBe('exploring')
+    expect(activityForTool('TodoWrite')).toBe('planning')
+    expect(activityForTool('AskUserQuestion')).toBe('asking')
+    expect(activityForCommand('git commit -m "done"')).toBe('shipping')
+    expect(activityForCommand('gh pr create --fill')).toBe('shipping')
+    expect(activityForCommand('rm -rf dist')).toBe('deleting')
+    expect(activityForCommand('git reset --hard')).toBe('deleting')
+    expect(activityForCommand('bun install')).toBe('installing')
+    expect(activityForCommand('pip install requests')).toBe('installing')
+  })
+
+  test('every mood has a place in the strongest-first order', async () => {
+    const moods = Object.keys(MOODS).sort()
+
+    expect([...STRONGEST_FIRST].sort()).toEqual(moods)
   })
 
   test('the strongest activity in a phrase wins', async () => {
@@ -98,9 +115,23 @@ describe('music', () => {
     expect(energyFromRate(1_000_000)).toBe(1)
   })
 
+  test('every style is a wave that stays between -1 and 1', async () => {
+    for (const style of STYLE_NAMES) {
+      for (let i = 0; i < 100; i++) {
+        const value = STYLES[style](i / 37)
+        expect(value).toBeGreaterThanOrEqual(-1)
+        expect(value).toBeLessThanOrEqual(1)
+      }
+    }
+  })
+
+  test('each task picks one of the styles', async () => {
+    expect(STYLE_NAMES).toContain(startTask('anything', 0).style)
+  })
+
   test('renders a mono 16-bit WAV of the right length', async () => {
     const task = startTask('anything', 0)
-    const bytes = renderWav(task.sound, composePhrase(task, 0, moment()), 1, task.seed)
+    const bytes = renderWav(task.style, composePhrase(task, 0, moment()), 1, task.seed)
     const text = (offset: number) => String.fromCharCode(...bytes.subarray(offset, offset + 4))
 
     expect(text(0)).toBe('RIFF')

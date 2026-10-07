@@ -49,7 +49,7 @@ function play($: EngineInterface, task: Task, notes: Note[], seconds: number) {
   session.playing?.abort()
   const controller = new AbortController()
   session.playing = controller
-  const base64 = toBase64(renderWav(task.sound, notes, seconds, task.seed))
+  const base64 = toBase64(renderWav(task.style, notes, seconds, task.seed))
   $.audio
     .play({ base64, mime: 'audio/wav' }, { gain: GAIN, signal: controller.signal })
     .catch(() => $.ui.status('miod: could not play audio'))

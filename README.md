@@ -1,14 +1,20 @@
+<p align="center">
+  <img src="docs/miod.png" alt="miod logo: a honey-amber music note with code brackets" width="200">
+</p>
+
 # miod
-
-Generative music for Claude Code. Every task gets its own tune, and the mood follows what the agent is doing and how fast it spends tokens.
-
-miod is a Claude Code mod (MIDI + mod). It listens to the session while Claude works and plays short phrases of music it writes on the spot. No music files, no library, no AI model: the notes are worked out in code and turned into audio.
-
-## Why I made this
 
 I'm an engineer, but these days I solve the boring problems entirely by vibe coding. Somewhere along the way I felt I had lost the creativity and curiosity I used to have when writing code myself.
 
 So I started thinking about how to make vibe coding fun again. miod is the first try: while the agent does the work, you get to hear it think, read, edit, fail and fix, with a little piece of music no one has heard before.
+
+Feel free to add more moods and styles. Each mood is one row in `hooks/moods.ts`, and each sound style is one entry in `hooks/styles.ts`.
+
+## What miod is
+
+Generative music for Claude Code. Every task gets its own tune, and the mood follows what the agent is doing and how fast it spends tokens.
+
+miod is a Claude Code mod (MIDI + mod). It listens to the session while Claude works and plays short phrases of music it writes on the spot. No music files, no library, no AI model: the notes are worked out in code and turned into audio.
 
 ## What it does
 
@@ -55,7 +61,7 @@ When you send a prompt, the prompt text and the time become a number. That numbe
 - a key (the root note)
 - a home scale: major, minor, dorian, mixolydian, or a pentatonic
 - a tempo between 84 and 131 bpm
-- a sound: sine, triangle or soft square
+- a sound style from `hooks/styles.ts`: sine, triangle or soft square
 - an 8-note theme the melody keeps coming back to
 
 So every task sounds different, even with the same prompt.
@@ -67,18 +73,26 @@ Each tool call is sorted into an activity:
 | The agent is… | Because it used… | The music feels… |
 | --- | --- | --- |
 | thinking | no tool | calm: slow notes and a soft pad |
-| reading | Read, Grep, Glob, web tools, MCP tools | airy: slow, higher, soft pad |
-| editing | Edit, Write | bright: switches to a major scale, light beat |
+| reading | Read, Grep, Glob, MCP tools | airy: slow, higher, soft pad |
+| exploring | WebSearch, WebFetch | curious: lydian scale, floating and higher |
+| planning | TodoWrite, plan mode | hopeful: major pentatonic, slow, warm pad |
+| asking | AskUserQuestion | waiting: lydian, almost silent, held pad |
+| editing | Edit, Write | bright: major scale, light beat |
 | running | Bash | driving: steady beat |
+| installing | Bash with npm, yarn, pnpm, bun, pip, brew, gem or bundle install | patient: minor pentatonic, sparse, steady beat |
 | testing | Bash with test, check, lint or tsc in the command | focused: dorian scale, busy beat |
+| shipping | Bash with git commit, push, merge or tag, or gh pr create or merge | triumphant: mixolydian, fast, higher, busy beat |
+| deleting | Bash with rm -r, git reset --hard, git clean or drop table | ominous: phrygian, low, slow, uneasy drone |
 | delegating | Agent | layered: one harmony voice per running subagent |
 | failing | a Bash command that failed | tense: minor scale, lower, uneasy drone |
 
-The music is played in short phrases of 8 beats. If several activities happen in one phrase, the strongest wins, in this order: failing, testing, editing, running, delegating, reading, thinking.
+The scales follow how musicians usually describe each mode. Lydian floats and sounds full of wonder, which is why film scores use it for discovery. Mixolydian is major with an edge, the sound of anthems. Phrygian is the darkest, for tension and foreboding. Dorian is serious but hopeful. Pentatonic scales come across as warm and calm. Sources: the [musical-u guide to modes](https://www.musical-u.com/learn/the-many-moods-of-musical-modes/) and [Jiang et al. 2024](https://www.frontiersin.org/journals/psychology/articles/10.3389/fpsyg.2024.1414014/full) on pentatonic warmth.
+
+The music is played in short phrases of 8 beats. If several activities happen in one phrase, the strongest wins, in this order: failing, shipping, deleting, testing, editing, installing, running, delegating, planning, exploring, asking, reading, thinking. The order lives in `STRONGEST_FIRST` in `hooks/activity.ts`, and a test fails if a mood is missing from it.
 
 Failing stays on until a command passes again. Then a quick bright "fixed" phrase plays.
 
-To change how a mood sounds, edit its row in `MOODS` in `hooks/moods.ts`:
+To change how a mood sounds, edit its row in `MOODS` in `hooks/moods.ts`. To add a mood, add its name to `Activity` and `STRONGEST_FIRST` in `hooks/activity.ts`, decide which tools or commands lead to it there, then give it a row in `MOODS`:
 
 - `scale`: `home` keeps the task's own scale, or name another one
 - `notesPerBeat`: 1, 2 or 4
@@ -96,9 +110,11 @@ To change how a mood sounds, edit its row in `MOODS` in `hooks/moods.ts`:
 
 When the task ends, a short rising chord plays. If you stop the task, it just goes quiet.
 
-### Making the sound — `hooks/synth.ts`
+### Making the sound — `hooks/styles.ts` and `hooks/synth.ts`
 
 No music library is used. Each note is drawn as a sound wave in code, mixed together, and saved as a WAV that Claude Code plays through the Mac's `afplay`.
+
+A sound style is the shape of the wave the melody uses. Each one is a row in `STYLES` in `hooks/styles.ts`: a function that takes how far through its cycles a note is and gives back a value between -1 and 1. To add a style, add a row. Every task can then pick it, and a test checks it stays between -1 and 1. The bass and pad always use the sine style.
 
 ## Files
 
@@ -108,6 +124,7 @@ No music library is used. Each note is drawn as a sound wave in code, mixed toge
 | `hooks/task.ts` | the tune for each task |
 | `hooks/activity.ts` | which activity a tool call counts as |
 | `hooks/moods.ts` | how each activity sounds |
+| `hooks/styles.ts` | the sound styles a task can pick |
 | `hooks/compose.ts` | turns tune, mood and energy into notes |
 | `hooks/theory.ts` | scales and note pitches |
 | `hooks/synth.ts` | turns notes into WAV audio |

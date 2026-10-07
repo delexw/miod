@@ -1,6 +1,7 @@
 import type { Note, Voice } from './compose'
 import { seededRandom } from './random'
-import type { Sound } from './task'
+import { STYLES } from './styles'
+import type { Style } from './styles'
 
 export const SAMPLE_RATE = 22050
 
@@ -14,8 +15,8 @@ const VOICE_SOUND: Record<Voice, VoiceSound> = {
   hat: { attackSeconds: 0.001, fadePerSecond: 60 },
 }
 
-export function renderWav(sound: Sound, notes: readonly Note[], seconds: number, noiseSeed: number): Uint8Array {
-  const samples = mix(sound, notes, Math.ceil(seconds * SAMPLE_RATE), seededRandom(noiseSeed))
+export function renderWav(style: Style, notes: readonly Note[], seconds: number, noiseSeed: number): Uint8Array {
+  const samples = mix(style, notes, Math.ceil(seconds * SAMPLE_RATE), seededRandom(noiseSeed))
   return encodeWav(samples)
 }
 
@@ -27,12 +28,12 @@ export function toBase64(bytes: Uint8Array): string {
   return btoa(binary)
 }
 
-function mix(sound: Sound, notes: readonly Note[], length: number, noise: () => number): Float32Array {
+function mix(style: Style, notes: readonly Note[], length: number, noise: () => number): Float32Array {
   const samples = new Float32Array(length)
 
   for (const note of notes) {
     const { attackSeconds, fadePerSecond } = VOICE_SOUND[note.voice]
-    const waveShape: Sound = note.voice === 'lead' || note.voice === 'harmony' ? sound : 'sine'
+    const wave = STYLES[note.voice === 'lead' || note.voice === 'harmony' ? style : 'sine']
     const first = Math.floor(note.start * SAMPLE_RATE)
     const count = Math.min(length - first, Math.floor(note.length * SAMPLE_RATE))
 
@@ -41,7 +42,7 @@ function mix(sound: Sound, notes: readonly Note[], length: number, noise: () => 
       const fadeIn = Math.min(1, t / attackSeconds)
       const fadeOut = Math.min(1, (count - i) / (SAMPLE_RATE * 0.02))
       const volume = fadeIn * fadeOut * Math.exp(-fadePerSecond * t) * note.gain
-      const value = note.voice === 'hat' ? noise() * 2 - 1 : wave(waveShape, note.frequency * t)
+      const value = note.voice === 'hat' ? noise() * 2 - 1 : wave(note.frequency * t)
       samples[first + i] = (samples[first + i] ?? 0) + value * volume
     }
   }
@@ -49,16 +50,6 @@ function mix(sound: Sound, notes: readonly Note[], length: number, noise: () => 
   return samples
 }
 
-function wave(sound: Sound, cycles: number): number {
-  const sine = Math.sin(2 * Math.PI * cycles)
-  if (sound === 'sine') {
-    return sine
-  }
-  if (sound === 'triangle') {
-    return 4 * Math.abs(cycles - Math.floor(cycles + 0.5)) - 1
-  }
-  return Math.tanh(3 * sine) * 0.7
-}
 
 function encodeWav(samples: Float32Array): Uint8Array {
   const bytes = new Uint8Array(44 + samples.length * 2)

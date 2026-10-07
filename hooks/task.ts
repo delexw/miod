@@ -1,19 +1,21 @@
 import { hashText, pick, seededRandom } from './random'
-import { noteName, SCALES } from './theory'
+import { STYLE_NAMES } from './styles'
+import type { Style } from './styles'
+import { noteName } from './theory'
 import type { ScaleName } from './theory'
-
-export type Sound = 'sine' | 'triangle' | 'soft-square'
 
 export type Task = {
   seed: number
   root: number
   homeScale: ScaleName
   tempo: number
-  sound: Sound
+  style: Style
   theme: readonly number[]
 }
 
 export const BEATS_PER_PHRASE = 8
+
+const HOME_SCALES: readonly ScaleName[] = ['major', 'minor', 'dorian', 'mixolydian', 'major pentatonic', 'minor pentatonic']
 
 export function startTask(prompt: string, startedAt: number): Task {
   const seed = hashText(`${startedAt}:${prompt}`)
@@ -22,9 +24,9 @@ export function startTask(prompt: string, startedAt: number): Task {
   return {
     seed,
     root: 57 + Math.floor(random() * 12),
-    homeScale: pick(random, Object.keys(SCALES) as ScaleName[]),
+    homeScale: pick(random, HOME_SCALES),
     tempo: 84 + Math.floor(random() * 48),
-    sound: pick(random, ['sine', 'triangle', 'soft-square'] as const),
+    style: pick(random, STYLE_NAMES),
     theme: Array.from({ length: 8 }, () => Math.floor(random() * 9) - 2),
   }
 }
