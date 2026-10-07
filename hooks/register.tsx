@@ -21,7 +21,7 @@ const nowPlaying = atom({ plugin: 'miod', key: 'nowPlaying' } as const, null)
 const chosenWave = atom({ plugin: 'miod', key: 'wave' } as const, DEFAULT_WAVE)
 
 const RATE_WINDOW_MS = 60_000
-const GAIN = 0.35
+const GAIN = 0.2
 const FINISH_LOOK: Look = { label: 'finished', color: '#F5A623' }
 const FIXED_LOOK: Look = { label: 'fixed', color: '#81C784' }
 
