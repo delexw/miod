@@ -5,8 +5,32 @@ import { composeFinish, composeFixed, composePhrase, energyFromRate } from '../h
 import type { Moment } from '../hooks/compose'
 import { MOODS } from '../hooks/moods'
 import { STYLE_NAMES, STYLES } from '../hooks/styles'
-import { renderWav, SAMPLE_RATE, toBase64 } from '../hooks/synth'
+import { loudness, renderClip, SAMPLE_RATE, toBase64, WAVE_POINTS_PER_SECOND } from '../hooks/synth'
+import { FLAVOURS, flavourMood } from '../hooks/flavours'
+import type { Flavour } from '../hooks/flavours'
 import { startTask } from '../hooks/task'
+import type { Task } from '../hooks/task'
+import { brighten, PROGRESSIONS, SCALE_NAMES, SCALES } from '../hooks/theory'
+
+const NEUTRAL: Flavour = {
+  name: 'neutral',
+  style: 'task',
+  tempo: 1,
+  brightness: 0,
+  busier: 0,
+  fill: 0,
+  octave: 0,
+  drums: 0,
+  pad: 'mood',
+  swing: 0,
+  bass: 'roots',
+}
+
+const plain = (prompt: string, startedAt: number): Task => ({
+  ...startTask(prompt, startedAt),
+  flavour: NEUTRAL,
+  progression: [0, 0, 0, 0],
+})
 
 const moment = (overrides: Partial<Moment> = {}): Moment => ({
   activity: 'thinking',
@@ -69,24 +93,24 @@ describe('music', () => {
   })
 
   test('heavier token use plays more melody notes', async () => {
-    const task = startTask('refactor the parser', 5000)
+    const task = plain('refactor the parser', 5000)
     const lead = (energy: number) => count(composePhrase(task, 0, moment({ activity: 'editing', energy })), 'lead')
 
     expect(lead(0.9)).toBeGreaterThan(lead(0.1))
   })
 
   test('reading is quiet with a pad, testing has a busy beat', async () => {
-    const task = startTask('investigate', 5000)
+    const task = plain('investigate', 5000)
     const reading = composePhrase(task, 0, moment({ activity: 'reading' }))
     const testing = composePhrase(task, 0, moment({ activity: 'testing' }))
 
-    expect(count(reading, 'pad')).toBe(3)
+    expect(count(reading, 'pad')).toBe(12)
     expect(count(reading, 'hat')).toBe(0)
     expect(count(testing, 'hat')).toBe(16)
   })
 
   test('failing adds an uneasy low drone', async () => {
-    const task = startTask('investigate', 5000)
+    const task = plain('investigate', 5000)
     const calmBass = count(composePhrase(task, 0, moment({ activity: 'running' })), 'bass')
     const failingBass = count(composePhrase(task, 0, moment({ activity: 'failing' })), 'bass')
 
@@ -94,7 +118,7 @@ describe('music', () => {
   })
 
   test('each running subagent adds a harmony layer', async () => {
-    const task = startTask('fan out', 5000)
+    const task = plain('fan out', 5000)
     const one = count(composePhrase(task, 0, moment({ activity: 'delegating', helpers: 1 })), 'harmony')
     const two = count(composePhrase(task, 0, moment({ activity: 'delegating', helpers: 2 })), 'harmony')
 
@@ -131,7 +155,7 @@ describe('music', () => {
 
   test('renders a mono 16-bit WAV of the right length', async () => {
     const task = startTask('anything', 0)
-    const bytes = renderWav(task.style, composePhrase(task, 0, moment()), 1, task.seed)
+    const bytes = renderClip(task.style, composePhrase(task, 0, moment()), 1, task.seed).wav
     const text = (offset: number) => String.fromCharCode(...bytes.subarray(offset, offset + 4))
 
     expect(text(0)).toBe('RIFF')
@@ -139,4 +163,89 @@ describe('music', () => {
     expect(bytes.length).toBe(44 + SAMPLE_RATE * 2)
     expect(toBase64(bytes).startsWith('UklGR')).toBe(true)
   })
+
+  test('fixed and finished phrases differ per task', async () => {
+    expect(composeFinish(startTask('a', 1))).not.toEqual(composeFinish(startTask('b', 2)))
+  })
 })
+
+describe('variety', () => {
+  test('there are at least 10 flavours, each with its own name', async () => {
+    const names = FLAVOURS.map(flavour => flavour.name)
+
+    expect(names.length).toBeGreaterThanOrEqual(10)
+    expect(new Set(names).size).toBe(names.length)
+  })
+
+  test('each task picks a flavour, a progression and a scale', async () => {
+    const task = startTask('anything', 42)
+
+    expect(FLAVOURS).toContain(task.flavour)
+    expect(PROGRESSIONS).toContain(task.progression)
+    expect(SCALE_NAMES).toContain(task.homeScale)
+  })
+
+  test('different tasks land on many different flavours', async () => {
+    const picked = new Set(Array.from({ length: 200 }, (_, i) => startTask('same prompt', i).flavour.name))
+
+    expect(picked.size).toBeGreaterThanOrEqual(10)
+  })
+
+  test('the same mood sounds different under different flavours', async () => {
+    const task = plain('investigate', 5000)
+    const editing = moment({ activity: 'editing' })
+    const phrases = FLAVOURS.map(flavour => JSON.stringify(composePhrase({ ...task, flavour }, 0, editing)))
+
+    expect(new Set(phrases).size).toBe(FLAVOURS.length)
+  })
+
+  test('a flavour nudges a mood and keeps it in range', async () => {
+    const chiptune = FLAVOURS.find(flavour => flavour.name === 'chiptune')
+    const ambient = FLAVOURS.find(flavour => flavour.name === 'ambient')
+    if (!chiptune || !ambient) {
+      throw new Error('missing flavour')
+    }
+
+    expect(flavourMood(MOODS.editing, chiptune).notesPerBeat).toBe(4)
+    expect(flavourMood(MOODS.shipping, chiptune).notesPerBeat).toBe(4)
+    expect(flavourMood(MOODS.running, ambient).drums).toBe('none')
+    expect(flavourMood(MOODS.testing, ambient).drums).toBe('light')
+    expect(flavourMood(MOODS.reading, ambient).pad).toBe(true)
+  })
+
+  test('every scale climbs within one octave', async () => {
+    for (const name of SCALE_NAMES) {
+      const notes = SCALES[name]
+      expect(notes[0]).toBe(0)
+      expect(notes.every((note, i) => i === 0 || note > (notes[i - 1] ?? -1))).toBe(true)
+      expect(Math.max(...notes)).toBeLessThan(12)
+    }
+  })
+
+  test('brightening moves along the light ladder and leaves other scales alone', async () => {
+    expect(brighten('minor', 1)).toBe('minor pentatonic')
+    expect(brighten('lydian', 5)).toBe('lydian')
+    expect(brighten('blues', 1)).toBe('blues')
+  })
+
+  test('the next task starts in a related key', async () => {
+    const first = startTask('first task', 1)
+    for (let i = 0; i < 50; i++) {
+      const next = startTask(`next ${i}`, i, first)
+      expect([0, 5, 7]).toContain((((next.root - first.root) % 12) + 12) % 12)
+    }
+  })
+
+  test('a fade in starts silent and a fade out ends silent', async () => {
+    const task = plain('anything', 0)
+    const notes = composePhrase(task, 0, moment({ activity: 'editing' }))
+    const unfaded = renderClip(task.style, notes, 2, task.seed).levels
+    const fadedIn = renderClip(task.style, notes, 2, task.seed, { inSeconds: 1 }).levels
+    const fadedOut = renderClip(task.style, notes, 2, task.seed, { outSeconds: 1 }).levels
+    const last = unfaded.length - 1
+
+    expect(fadedIn[0] ?? 1).toBeLessThan((unfaded[0] ?? 0) * 0.2)
+    expect(fadedOut[last] ?? 1).toBeLessThan((unfaded[last] ?? 0) * 0.2)
+  })
+})
+

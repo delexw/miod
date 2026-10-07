@@ -4,6 +4,7 @@ import { STYLES } from './styles'
 import type { Style } from './styles'
 
 export const SAMPLE_RATE = 22050
+export const WAVE_POINTS_PER_SECOND = 10
 
 type VoiceSound = { attackSeconds: number; fadePerSecond: number }
 
@@ -15,9 +16,38 @@ const VOICE_SOUND: Record<Voice, VoiceSound> = {
   hat: { attackSeconds: 0.001, fadePerSecond: 60 },
 }
 
-export function renderWav(style: Style, notes: readonly Note[], seconds: number, noiseSeed: number): Uint8Array {
+export type Clip = { wav: Uint8Array; levels: number[] }
+
+export type Fade = { inSeconds?: number; outSeconds?: number }
+
+export function renderClip(style: Style, notes: readonly Note[], seconds: number, noiseSeed: number, fade: Fade = {}): Clip {
   const samples = mix(style, notes, Math.ceil(seconds * SAMPLE_RATE), seededRandom(noiseSeed))
-  return encodeWav(samples)
+  applyFade(samples, fade)
+  return { wav: encodeWav(samples), levels: loudness(samples) }
+}
+
+function applyFade(samples: Float32Array, { inSeconds = 0, outSeconds = 0 }: Fade) {
+  const fadeIn = Math.floor(inSeconds * SAMPLE_RATE)
+  const fadeOut = Math.floor(outSeconds * SAMPLE_RATE)
+  for (let i = 0; i < samples.length; i++) {
+    const rise = fadeIn > 0 ? Math.min(1, i / fadeIn) : 1
+    const fall = fadeOut > 0 ? Math.min(1, (samples.length - i) / fadeOut) : 1
+    samples[i] = (samples[i] ?? 0) * rise * fall
+  }
+}
+
+export function loudness(samples: Float32Array): number[] {
+  const size = Math.floor(SAMPLE_RATE / WAVE_POINTS_PER_SECOND)
+  const levels: number[] = []
+  for (let start = 0; start < samples.length; start += size) {
+    let sum = 0
+    const end = Math.min(samples.length, start + size)
+    for (let i = start; i < end; i++) {
+      sum += (samples[i] ?? 0) ** 2
+    }
+    levels.push(Math.min(1, Math.sqrt(sum / (end - start)) * 4))
+  }
+  return levels
 }
 
 export function toBase64(bytes: Uint8Array): string {

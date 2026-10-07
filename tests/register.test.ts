@@ -1,11 +1,21 @@
 import { expect, mock, test } from 'claude-code/testing'
-import type { On } from 'claude-code'
+import type { EventCalls, On } from 'claude-code'
 
 function standInForEngine(on: On) {
   on('turn.start', ($, e) => ({ turnId: e.turnId }))
   on('turn.complete', ($, e) => ({ text: e.answer }))
   on('ui.status', () => ({ value: undefined }))
   on('tool.call', () => ({ result: {}, text: 'ok' }))
+}
+
+function complete(turnId: string) {
+  return {
+    turnId,
+    reason: 'answer',
+    answer: 'done',
+    durationMs: 1_000,
+    isAborted: false,
+  } as Parameters<EventCalls['turn']['complete']>[0]
 }
 
 test('plays music while a task runs and ends it when the turn completes', async ($, on) => {
@@ -25,17 +35,32 @@ test('plays music while a task runs and ends it when the turn completes', async 
   expect(plays.length).toBeGreaterThan(1)
 
   const beforeEnd = plays.length
-  await $.turn.complete({
-    turnId: 'turn-1',
-    reason: 'answer',
-    answer: 'done',
-    durationMs: 10_000,
-    isAborted: false,
-  } as Parameters<typeof $.turn.complete>[0])
+  await $.turn.complete(complete('turn-1'))
+  expect(plays.length).toBe(beforeEnd)
+
+  await clock.advance(6_000)
   expect(plays.length).toBe(beforeEnd + 1)
 
   await clock.advance(20_000)
   expect(plays.length).toBe(beforeEnd + 1)
+})
+
+test('a new task that starts before the finish carries the music on with no ending', async ($, on) => {
+  const clock = mock.clock(on, { now: 1000 })
+  standInForEngine(on)
+  const plays: unknown[] = []
+  on('audio.play', ($, e) => {
+    plays.push(e)
+    return { value: undefined }
+  })
+
+  await $.turn.start({ text: 'first task', turnId: 'turn-a' })
+  await $.turn.complete(complete('turn-a'))
+  await $.turn.start({ text: 'second task', turnId: 'turn-b' })
+  expect(plays.length).toBe(2)
+
+  await clock.advance(2_500)
+  expect(plays.length).toBe(2)
 })
 
 test('/miod off keeps tasks silent', async ($, on) => {
@@ -77,3 +102,4 @@ test('a failing command turns tense and a passing one plays the fixed phrase', a
 
   await clock.advance(1)
 })
+

@@ -1,7 +1,9 @@
+import { FLAVOURS } from './flavours'
+import type { Flavour } from './flavours'
 import { hashText, pick, seededRandom } from './random'
 import { STYLE_NAMES } from './styles'
 import type { Style } from './styles'
-import { noteName } from './theory'
+import { noteName, PROGRESSIONS, RELATED_KEY_STEPS, SCALE_NAMES } from './theory'
 import type { ScaleName } from './theory'
 
 export type Task = {
@@ -10,29 +12,45 @@ export type Task = {
   homeScale: ScaleName
   tempo: number
   style: Style
+  flavour: Flavour
+  progression: readonly number[]
   theme: readonly number[]
 }
 
 export const BEATS_PER_PHRASE = 8
 
-const HOME_SCALES: readonly ScaleName[] = ['major', 'minor', 'dorian', 'mixolydian', 'major pentatonic', 'minor pentatonic']
+const LOWEST_ROOT = 57
 
-export function startTask(prompt: string, startedAt: number): Task {
+export function startTask(prompt: string, startedAt: number, previous?: Task): Task {
   const seed = hashText(`${startedAt}:${prompt}`)
   const random = seededRandom(seed)
+  const freshRoot = LOWEST_ROOT + Math.floor(random() * 12)
+  const root = previous ? keyNear(previous.root + pick(random, RELATED_KEY_STEPS)) : freshRoot
+  const homeScale = pick(random, SCALE_NAMES)
+  const tempo = 84 + Math.floor(random() * 48)
+  const style = pick(random, STYLE_NAMES)
+  const theme = Array.from({ length: 8 }, () => Math.floor(random() * 9) - 2)
+  const flavour = pick(random, FLAVOURS)
+  const progression = pick(random, PROGRESSIONS)
 
   return {
     seed,
-    root: 57 + Math.floor(random() * 12),
-    homeScale: pick(random, HOME_SCALES),
-    tempo: 84 + Math.floor(random() * 48),
-    style: pick(random, STYLE_NAMES),
-    theme: Array.from({ length: 8 }, () => Math.floor(random() * 9) - 2),
+    root,
+    homeScale,
+    tempo: Math.round(tempo * flavour.tempo),
+    style: flavour.style === 'task' ? style : flavour.style,
+    flavour,
+    progression,
+    theme,
   }
 }
 
+function keyNear(midi: number): number {
+  return LOWEST_ROOT + (((midi - LOWEST_ROOT) % 12) + 12) % 12
+}
+
 export function describeTask(task: Task): string {
-  return `${noteName(task.root)} ${task.homeScale}, ${task.tempo} bpm`
+  return `${task.flavour.name}, ${noteName(task.root)} ${task.homeScale}, ${task.tempo} bpm`
 }
 
 export function phraseSeconds(task: Task): number {

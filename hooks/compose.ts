@@ -1,10 +1,12 @@
 import type { Activity } from './activity'
+import { flavourMood } from './flavours'
+import type { Bass } from './flavours'
 import { MOODS } from './moods'
 import type { Drums, Mood } from './moods'
 import { at, seededRandom } from './random'
 import { BEATS_PER_PHRASE } from './task'
 import type { Task } from './task'
-import { midiToFrequency, scaleStepToMidi } from './theory'
+import { brighten, midiToFrequency, scaleStepToMidi } from './theory'
 import type { ScaleName } from './theory'
 
 export type Moment = {
@@ -36,16 +38,16 @@ export function energyFromRate(tokensPerMinute: number): number {
 }
 
 export function composePhrase(task: Task, phraseNumber: number, moment: Moment): Note[] {
-  const mood = MOODS[moment.activity]
+  const mood = flavourMood(MOODS[moment.activity], task.flavour)
   const random = seededRandom(task.seed ^ Math.imul(phraseNumber + 1, 0x9e3779b1))
-  const scale = scaleFor(task, mood)
+  const scale = brighten(scaleFor(task, mood), task.flavour.brightness)
   const octave = mood.octave + (moment.contextFill > 0.6 ? 1 : 0)
   const notesPerBeat = busierWhenSpendingFast(mood.notesPerBeat, moment.energy)
   const fill = Math.min(0.95, mood.fill + moment.energy * 0.3)
   const beat = 60 / task.tempo
 
   const melody = writeMelody(task, scale, phraseNumber, octave, notesPerBeat, fill, beat, random)
-  const notes: Note[] = [...melody, ...writeBass(task, scale, moment.energy, beat)]
+  const notes: Note[] = [...melody, ...writeBass(task, scale, task.flavour.bass, moment.energy, beat)]
 
   if (mood.pad) {
     notes.push(...writePad(task, scale, beat))
@@ -60,7 +62,7 @@ export function composePhrase(task: Task, phraseNumber: number, moment: Moment):
 }
 
 export function composeFinish(task: Task): Note[] {
-  return arpeggio(task, task.homeScale, [0, 2, 4, 7], 0.5, 4)
+  return arpeggio(task, task.homeScale, [0, 2, 4, 7], 0.5, BEATS_PER_PHRASE)
 }
 
 export function composeFixed(task: Task): Note[] {
@@ -89,15 +91,17 @@ function writeMelody(
   random: () => number,
 ): Note[] {
   const slot = beat / notesPerBeat
+  const swing = notesPerBeat > 1 ? slot * task.flavour.swing : 0
   const notes: Note[] = []
   let step = 0
 
   for (let i = 0; i < BEATS_PER_PHRASE * notesPerBeat; i++) {
     const isOnBeat = i % notesPerBeat === 0
-    step = isOnBeat ? at(task.theme, phraseNumber + i / notesPerBeat) : step + Math.floor(random() * 5) - 2
+    const beatNumber = i / notesPerBeat
+    step = isOnBeat ? at(task.theme, phraseNumber + beatNumber) + chordAt(task, beatNumber) : step + Math.floor(random() * 5) - 2
     if (isOnBeat || random() < fill) {
       notes.push({
-        start: i * slot,
+        start: i * slot + (i % 2 === 1 ? swing : 0),
         length: slot * (isOnBeat ? 1.6 : 0.9),
         frequency: midiToFrequency(scaleStepToMidi(task.root, scale, step) + octave * 12),
         gain: isOnBeat ? 0.32 : 0.22,
@@ -109,27 +113,43 @@ function writeMelody(
   return notes
 }
 
-function writeBass(task: Task, scale: ScaleName, energy: number, beat: number): Note[] {
-  const steps = energy > 0.5 ? [0, 4, 0, 4] : [0, 0]
+const BASS_LINES: Record<Bass, { calm: readonly number[]; busy: readonly number[]; hold: number }> = {
+  roots: { calm: [0, 0], busy: [0, 4, 0, 4], hold: 0.95 },
+  walking: { calm: [0, 2, 4, 5], busy: [0, 2, 4, 5, 4, 2, 1, 0], hold: 0.9 },
+  pulse: { calm: [0, 0, 0, 0, 0, 0, 0, 0], busy: [0, 0, 4, 4, 0, 0, 4, 4], hold: 0.4 },
+}
+
+function writeBass(task: Task, scale: ScaleName, bass: Bass, energy: number, beat: number): Note[] {
+  const line = BASS_LINES[bass]
+  const steps = energy > 0.5 ? line.busy : line.calm
   const length = (BEATS_PER_PHRASE * beat) / steps.length
 
   return steps.map((step, i) => ({
     start: i * length,
-    length: length * 0.95,
-    frequency: midiToFrequency(scaleStepToMidi(task.root, scale, step) - 24),
+    length: length * line.hold,
+    frequency: midiToFrequency(scaleStepToMidi(task.root, scale, step + chordAt(task, (i * length) / beat)) - 24),
     gain: 0.35,
     voice: 'bass',
   }))
 }
 
 function writePad(task: Task, scale: ScaleName, beat: number): Note[] {
-  return [0, 2, 4].map(step => ({
-    start: 0,
-    length: BEATS_PER_PHRASE * beat,
-    frequency: midiToFrequency(scaleStepToMidi(task.root, scale, step) - 12),
-    gain: 0.07,
-    voice: 'pad',
-  }))
+  const beatsPerChord = BEATS_PER_PHRASE / task.progression.length
+
+  return task.progression.flatMap((chord, i) =>
+    [0, 2, 4].map(step => ({
+      start: i * beatsPerChord * beat,
+      length: beatsPerChord * beat,
+      frequency: midiToFrequency(scaleStepToMidi(task.root, scale, chord + step) - 12),
+      gain: 0.07,
+      voice: 'pad' as const,
+    })),
+  )
+}
+
+function chordAt(task: Task, beatNumber: number): number {
+  const beatsPerChord = BEATS_PER_PHRASE / task.progression.length
+  return at(task.progression, Math.floor(beatNumber / beatsPerChord))
 }
 
 function writeHarmonies(melody: readonly Note[], task: Task, helpers: number): Note[] {

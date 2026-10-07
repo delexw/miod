@@ -3,19 +3,29 @@ import type { EngineInterface, Register, Timer } from 'claude-code'
 
 import { activityForCommand, activityForTool, strongestActivity } from './activity'
 import type { Activity } from './activity'
+import { drawBand } from './band'
 import { composeFinish, composeFixed, composePhrase, energyFromRate } from './compose'
 import type { Moment, Note } from './compose'
 import { MOODS } from './moods'
-import { renderWav, toBase64 } from './synth'
+import { renderClip, toBase64, WAVE_POINTS_PER_SECOND } from './synth'
+import type { Fade } from './synth'
 import { describeTask, phraseSeconds, startTask } from './task'
 import type { Task } from './task'
+import type { NowPlaying } from '../types'
 
 const isEnabled = atom({ plugin: 'miod', key: 'isEnabled' } as const, true)
+const nowPlaying = atom({ plugin: 'miod', key: 'nowPlaying' } as const, null)
 
 const RATE_WINDOW_MS = 60_000
 const GAIN = 0.6
+const FINISH_LOOK: Look = { label: 'finished', color: '#F5A623' }
+const FIXED_LOOK: Look = { label: 'fixed', color: '#81C784' }
 
 type Spend = { at: number; tokens: number }
+
+type Look = { label: string; color: string }
+
+type PlayOptions = { fade?: Fade; shouldOverlap?: boolean }
 
 type Session = {
   task: Task | null
@@ -29,6 +39,10 @@ type Session = {
   seenThisPhrase: Activity[]
   isFailing: boolean
   helpers: number
+  clipCount: number
+  lastTask: Task | null
+  phraseEndsAt: number
+  finishTimer: Timer | null
 }
 
 const session: Session = {
@@ -43,20 +57,31 @@ const session: Session = {
   seenThisPhrase: [],
   isFailing: false,
   helpers: 0,
+  clipCount: 0,
+  lastTask: null,
+  phraseEndsAt: 0,
+  finishTimer: null,
 }
 
-function play($: EngineInterface, task: Task, notes: Note[], seconds: number) {
-  session.playing?.abort()
+function play($: EngineInterface, task: Task, notes: Note[], seconds: number, look: Look, options: PlayOptions = {}) {
+  if (!options.shouldOverlap) {
+    session.playing?.abort()
+  }
   const controller = new AbortController()
   session.playing = controller
-  const base64 = toBase64(renderWav(task.style, notes, seconds, task.seed))
+  const clip = renderClip(task.style, notes, seconds, task.seed, options.fade)
+  session.clipCount += 1
+  showWave($, { clipId: session.clipCount, ...look, levels: clip.levels, pointsPerSecond: WAVE_POINTS_PER_SECOND })
   $.audio
-    .play({ base64, mime: 'audio/wav' }, { gain: GAIN, signal: controller.signal })
+    .play({ base64: toBase64(clip.wav), mime: 'audio/wav' }, { gain: GAIN, signal: controller.signal })
     .catch(() => $.ui.status('miod: could not play audio'))
 }
 
-async function readMoment($: EngineInterface): Promise<Moment> {
-  const now = await $.clock.now()
+function showWave($: EngineInterface, clip: NowPlaying | null) {
+  update($, nowPlaying, () => clip).catch(() => undefined)
+}
+
+async function readMoment($: EngineInterface, now: number): Promise<Moment> {
   session.spends = session.spends.filter(spend => now - spend.at < RATE_WINDOW_MS)
   const tokens = session.spends.reduce((sum, spend) => sum + spend.tokens, 0)
   const elapsed = Math.max(10_000, now - (session.spends[0]?.at ?? now))
@@ -79,14 +104,25 @@ async function playNextPhrase($: EngineInterface) {
   if (!task) {
     return
   }
-  const moment = await readMoment($)
-  play($, task, composePhrase(task, session.phraseNumber, moment), phraseSeconds(task))
+  const now = await $.clock.now()
+  const moment = await readMoment($, now)
+  const mood = MOODS[moment.activity]
+  const seconds = phraseSeconds(task)
+  const isFirst = session.phraseNumber === 0
+  const look = { label: `${mood.feel} · ${describeTask(task)}`, color: mood.color }
+  play($, task, composePhrase(task, session.phraseNumber, moment), seconds, look, {
+    fade: isFirst ? { inSeconds: seconds / 2 } : undefined,
+    shouldOverlap: isFirst,
+  })
   session.phraseNumber += 1
-  $.ui.status(`♪ ${describeTask(task)}, ${MOODS[moment.activity].feel}, energy ${Math.round(moment.energy * 100)}%`)
+  session.phraseEndsAt = now + seconds * 1000
+  $.ui.status(`♪ ${describeTask(task)}, ${mood.feel}, energy ${Math.round(moment.energy * 100)}%`)
 }
 
 async function startMusic($: EngineInterface, prompt: string, turnId: string) {
-  const task = startTask(prompt, await $.clock.now())
+  session.finishTimer?.cancel()
+  session.finishTimer = null
+  const task = startTask(prompt, await $.clock.now(), session.lastTask ?? undefined)
   Object.assign(session, {
     task,
     turnId,
@@ -103,17 +139,38 @@ async function startMusic($: EngineInterface, prompt: string, turnId: string) {
   })
 }
 
-function stopMusic($: EngineInterface, shouldPlayFinish: boolean) {
+async function stopMusic($: EngineInterface, shouldPlayFinish: boolean) {
   session.ticker?.cancel()
   session.ticker = null
-  if (session.task && shouldPlayFinish) {
-    play($, session.task, composeFinish(session.task), phraseSeconds(session.task) / 2)
+  session.finishTimer?.cancel()
+  session.finishTimer = null
+  const task = session.task
+  if (task && shouldPlayFinish) {
+    session.lastTask = task
+    const wait = Math.max(0, session.phraseEndsAt - (await $.clock.now()))
+    session.finishTimer = $.clock.after(Math.round(wait), () => playFinish($, task))
   } else {
     session.playing?.abort()
+    showWave($, null)
   }
   session.task = null
   session.turnId = null
   $.ui.status(undefined)
+}
+
+function playFinish($: EngineInterface, task: Task) {
+  session.finishTimer = null
+  if (session.task) {
+    return
+  }
+  const seconds = phraseSeconds(task)
+  play($, task, composeFinish(task), seconds, FINISH_LOOK, { fade: { outSeconds: seconds / 2 } })
+  session.finishTimer = $.clock.after(Math.round(seconds * 1000), () => {
+    session.finishTimer = null
+    if (!session.task) {
+      showWave($, null)
+    }
+  })
 }
 
 function noteActivity(activity: Activity) {
@@ -133,7 +190,7 @@ function noteCommandResult($: EngineInterface, hasFailed: boolean) {
   }
   if (session.isFailing) {
     session.isFailing = false
-    play($, task, composeFixed(task), phraseSeconds(task) / 2)
+    play($, task, composeFixed(task), phraseSeconds(task) / 2, FIXED_LOOK)
   }
 }
 
@@ -153,7 +210,7 @@ export const register: Register = on => {
     if (choice === 'on' || choice === 'off') {
       await update($, isEnabled, () => choice === 'on')
       if (choice === 'off') {
-        stopMusic($, false)
+        await stopMusic($, false)
       }
       return { text: `miod is ${choice}.` }
     }
@@ -216,13 +273,22 @@ export const register: Register = on => {
   on('turn.complete', async ($, e, next) => {
     const result = await next(e)
     if (session.task && e.turnId === session.turnId) {
-      stopMusic($, e.reason === 'answer')
+      await stopMusic($, e.reason === 'answer')
     }
     return result
   })
 
-  on('session.end', ($, e, next) => {
-    stopMusic($, false)
+  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+    const below = await next(e)
+    const clip = await read($, nowPlaying)
+    if (!clip || e.props.hasSurvey) {
+      return below
+    }
+    return drawBand($.ui.resolve(e), clip, below)
+  })
+
+  on('session.end', async ($, e, next) => {
+    await stopMusic($, false)
     return next(e)
   })
 }
