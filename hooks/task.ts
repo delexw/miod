@@ -3,13 +3,12 @@ import type { Flavour } from './flavours'
 import { hashText, pick, seededRandom } from './random'
 import { STYLE_NAMES } from './styles'
 import type { Style } from './styles'
-import { noteName, PROGRESSIONS, RELATED_KEY_STEPS, SCALE_NAMES } from './theory'
+import { noteName, PROGRESSIONS, RELATED_KEY_STEPS } from './theory'
 import type { ScaleName } from './theory'
 
 export type Task = {
   seed: number
   root: number
-  homeScale: ScaleName
   tempo: number
   style: Style
   flavour: Flavour
@@ -26,7 +25,6 @@ export function startTask(prompt: string, startedAt: number, previous?: Task): T
   const random = seededRandom(seed)
   const freshRoot = LOWEST_ROOT + Math.floor(random() * 12)
   const root = previous ? keyNear(previous.root + pick(random, RELATED_KEY_STEPS)) : freshRoot
-  const homeScale = pick(random, SCALE_NAMES)
   const tempo = 84 + Math.floor(random() * 48)
   const style = pick(random, STYLE_NAMES)
   const theme = Array.from({ length: 8 }, () => Math.floor(random() * 9) - 2)
@@ -36,7 +34,6 @@ export function startTask(prompt: string, startedAt: number, previous?: Task): T
   return {
     seed,
     root,
-    homeScale,
     tempo: Math.round(tempo * flavour.tempo),
     style: flavour.style === 'task' ? style : flavour.style,
     flavour,
@@ -49,8 +46,8 @@ function keyNear(midi: number): number {
   return LOWEST_ROOT + (((midi - LOWEST_ROOT) % 12) + 12) % 12
 }
 
-export function describeTask(task: Task): string {
-  return `${task.flavour.name} · ${noteName(task.root)} ${task.homeScale} · ${task.tempo} bpm`
+export function describeTask(task: Task, scale: ScaleName): string {
+  return `${task.flavour.name} · ${noteName(task.root)} ${scale} · ${task.tempo} bpm`
 }
 
 export function phraseSeconds(task: Task): number {

@@ -19,8 +19,8 @@ Feeling it's a bit too noisy? 🙉 No hard feelings. Just [turn it off](#usage) 
 
 A Claude Code mod (MIDI + mod) that writes music on the spot while Claude works. No music files, no library, no AI model.
 
-- Every task picks its own flavour (lo-fi, chiptune, ambient, jazzy and 8 more), key, scale (16 of them), chord progression, tempo, sound and theme.
-- The mood follows what the agent is doing. Every mood has 10 variants, and a new one is picked as the task goes: whenever the activity changes, and every 4 phrases. The task's flavour bends it too, so editing in a lo-fi task sounds nothing like editing in a chiptune one.
+- Every task picks its own flavour (lo-fi, chiptune, ambient, jazzy and 8 more), key, chord progression, tempo, sound and theme.
+- The mood follows what the agent is doing, and the mood picks the scale (16 of them) from its own weighted list: failing leans on minor and harmonic minor, shipping on mixolydian and major. Every mood has 10 variants, and a new variant and scale are picked as the task goes: whenever the activity changes, and every 4 phrases. The task's flavour bends it too, so editing in a lo-fi task sounds nothing like editing in a chiptune one.
 - The faster it spends tokens, the busier the music.
 - Above the prompt, one line shows the mood, flavour, key, tempo and energy, with a wave under it that scrolls with the music, coloured by mood:
 
@@ -50,7 +50,7 @@ Then start a new session.
 
 ## How the mood is picked
 
-Each row below is the mood's first variant. All 10 are in `MOODS` in `hooks/moods.ts`.
+Each row shows the mood's first variant and its most likely scale. The variants are in `MOODS` and the scale weights in `MOOD_SCALES`, both in `hooks/moods.ts`.
 
 | The agent is… | When it uses… | Sounds |
 | --- | --- | --- |
@@ -75,9 +75,10 @@ The scales follow how musicians describe each mode ([musical-u](https://www.musi
 ## Add a mood or style
 
 - **Mood variant:** add a row to that mood's list in `MOODS` in `hooks/moods.ts`.
-- **New mood:** add the name to `Activity` and `STRONGEST_FIRST` in `hooks/activity.ts`, map tools or commands to it there, and give it a list of at least 10 variants in `MOODS`.
+- **New mood:** add the name to `Activity` and `STRONGEST_FIRST` in `hooks/activity.ts`, map tools or commands to it there, give it a list of at least 10 variants in `MOODS` and a row of scale weights in `MOOD_SCALES`.
 - **Flavour:** add a row to `FLAVOURS` in `hooks/flavours.ts`. Each field nudges every mood: brighter or darker scale, busier or calmer, drums up or down, swing, bass line.
-- **Scale or chords:** add to `SCALES` or `PROGRESSIONS` in `hooks/theory.ts`.
+- **Scale:** add it to `SCALES` in `hooks/theory.ts`, then give it a weight in at least one mood's `MOOD_SCALES` row. A test fails if a scale belongs to no mood.
+- **Chords:** add to `PROGRESSIONS` in `hooks/theory.ts`.
 - **Wave look:** add a file to `hooks/waves/` that exports a `WaveLook` (how many rows, and a `draw` function), then list it in `WAVES` in `hooks/waves/index.ts`.
 - **Style:** add a wave function to `STYLES` in `hooks/styles.ts`. It must return values between -1 and 1.
 

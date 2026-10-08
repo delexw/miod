@@ -9,6 +9,7 @@ import type { ScaleName } from './theory'
 
 export type Moment = {
   mood: Mood
+  scale: ScaleName
   energy: number
   contextFill: number
   toolCalls: number
@@ -38,7 +39,7 @@ export function energyFromRate(tokensPerMinute: number): number {
 export function composePhrase(task: Task, phraseNumber: number, moment: Moment): Note[] {
   const mood = flavourMood(moment.mood, task.flavour)
   const random = seededRandom(task.seed ^ Math.imul(phraseNumber + 1, 0x9e3779b1))
-  const scale = brighten(scaleFor(task, mood), task.flavour.brightness)
+  const scale = soundingScale(task, moment.scale)
   const octave = mood.octave + (moment.contextFill > 0.6 ? 1 : 0)
   const notesPerBeat = busierWhenSpendingFast(mood.notesPerBeat, moment.energy)
   const fill = Math.min(0.95, mood.fill + moment.energy * 0.3)
@@ -50,7 +51,7 @@ export function composePhrase(task: Task, phraseNumber: number, moment: Moment):
   if (mood.pad) {
     notes.push(...writePad(task, scale, beat))
   }
-  notes.push(...writeHarmonies(melody, task, moment.helpers))
+  notes.push(...writeHarmonies(melody, scale, moment.helpers))
   notes.push(...writeDrums(mood.drums, moment.toolCalls, notesPerBeat, beat, random))
   if (mood.clash || moment.contextFill > 0.8) {
     notes.push(writeUneasyDrone(task, beat))
@@ -59,16 +60,16 @@ export function composePhrase(task: Task, phraseNumber: number, moment: Moment):
   return notes
 }
 
-export function composeFinish(task: Task): Note[] {
-  return arpeggio(task, task.homeScale, [0, 2, 4, 7], 0.5, BEATS_PER_PHRASE)
+export function soundingScale(task: Task, scale: ScaleName): ScaleName {
+  return brighten(scale, task.flavour.brightness)
+}
+
+export function composeFinish(task: Task, scale: ScaleName): Note[] {
+  return arpeggio(task, scale, [0, 2, 4, 7], 0.5, BEATS_PER_PHRASE)
 }
 
 export function composeFixed(task: Task): Note[] {
   return arpeggio(task, 'major', [0, 2, 4, 7, 9], 0.25, 2)
-}
-
-function scaleFor(task: Task, mood: Mood): ScaleName {
-  return mood.scale === 'home' ? task.homeScale : mood.scale
 }
 
 function busierWhenSpendingFast(notesPerBeat: 1 | 2 | 4, energy: number): 1 | 2 | 4 {
@@ -150,7 +151,7 @@ function chordAt(task: Task, beatNumber: number): number {
   return at(task.progression, Math.floor(beatNumber / beatsPerChord))
 }
 
-function writeHarmonies(melody: readonly Note[], task: Task, helpers: number): Note[] {
+function writeHarmonies(melody: readonly Note[], scale: ScaleName, helpers: number): Note[] {
   const voices = HARMONY_STEPS.slice(0, Math.min(helpers, HARMONY_STEPS.length))
 
   return voices.flatMap(step =>
@@ -158,7 +159,7 @@ function writeHarmonies(melody: readonly Note[], task: Task, helpers: number): N
       .filter((_, i) => i % 2 === 0)
       .map(note => ({
         ...note,
-        frequency: note.frequency * 2 ** (scaleStepToMidi(0, task.homeScale, step) / 12),
+        frequency: note.frequency * 2 ** (scaleStepToMidi(0, scale, step) / 12),
         gain: note.gain * 0.45,
         voice: 'harmony' as const,
       })),

@@ -62,7 +62,7 @@ describe('wave', () => {
     if (!mood) {
       throw new Error('editing has no variants')
     }
-    const clip = renderClip(task.style, composePhrase(task, 0, { mood, energy: 0.5, contextFill: 0, toolCalls: 0, helpers: 0 }), 2, task.seed)
+    const clip = renderClip(task.style, composePhrase(task, 0, { mood, scale: 'major', energy: 0.5, contextFill: 0, toolCalls: 0, helpers: 0 }), 2, task.seed)
 
     expect(clip.levels.length).toBe(2 * WAVE_POINTS_PER_SECOND)
     expect(Math.max(...clip.levels)).toBeGreaterThan(0)

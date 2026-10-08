@@ -3,18 +3,19 @@ import { describe, expect, test } from 'claude-code/testing'
 import { activityForCommand, activityForTool, STRONGEST_FIRST, strongestActivity } from '../hooks/activity'
 import { composeFinish, composeFixed, composePhrase, energyFromRate } from '../hooks/compose'
 import type { Moment } from '../hooks/compose'
-import { MOODS } from '../hooks/moods'
+import { MOOD_SCALES, MOODS } from '../hooks/moods'
 import { nextMood, PHRASES_PER_VARIANT } from '../hooks/moods'
 import type { Mood } from '../hooks/moods'
 import type { Activity } from '../hooks/activity'
-import { seededRandom } from '../hooks/random'
+import { pickWeighted, seededRandom } from '../hooks/random'
 import { STYLE_NAMES, STYLES } from '../hooks/styles'
 import { loudness, renderClip, SAMPLE_RATE, TAIL_SECONDS, toBase64, WAVE_POINTS_PER_SECOND } from '../hooks/synth'
 import { FLAVOURS, flavourMood } from '../hooks/flavours'
 import type { Flavour } from '../hooks/flavours'
-import { startTask } from '../hooks/task'
+import { describeTask, startTask } from '../hooks/task'
 import type { Task } from '../hooks/task'
 import { brighten, PROGRESSIONS, SCALE_NAMES, SCALES } from '../hooks/theory'
+import type { ScaleName } from '../hooks/theory'
 
 const NEUTRAL: Flavour = {
   name: 'neutral',
@@ -34,6 +35,8 @@ const FIRST_MOODS = Object.fromEntries(
   Object.entries(MOODS).map(([activity, variants]) => [activity, variants[0]]),
 ) as Record<Activity, Mood>
 
+const firstScale = (activity: Activity): ScaleName => Object.keys(MOOD_SCALES[activity])[0] as ScaleName
+
 const plain = (prompt: string, startedAt: number): Task => ({
   ...startTask(prompt, startedAt),
   flavour: NEUTRAL,
@@ -42,6 +45,7 @@ const plain = (prompt: string, startedAt: number): Task => ({
 
 const moment = ({ activity = 'thinking', ...overrides }: Partial<Moment> & { activity?: Activity } = {}): Moment => ({
   mood: FIRST_MOODS[activity],
+  scale: firstScale(activity),
   energy: 0.1,
   contextFill: 0,
   toolCalls: 0,
@@ -137,7 +141,7 @@ describe('music', () => {
   test('finish and fixed phrases are short rising arpeggios', async () => {
     const task = startTask('anything', 0)
 
-    expect(composeFinish(task).length).toBe(4)
+    expect(composeFinish(task, 'major').length).toBe(4)
     expect(composeFixed(task).length).toBe(5)
   })
 
@@ -173,7 +177,7 @@ describe('music', () => {
   })
 
   test('fixed and finished phrases differ per task', async () => {
-    expect(composeFinish(startTask('a', 1))).not.toEqual(composeFinish(startTask('b', 2)))
+    expect(composeFinish(startTask('a', 1), 'major')).not.toEqual(composeFinish(startTask('b', 2), 'major'))
   })
 })
 
@@ -218,12 +222,15 @@ describe('variety', () => {
     expect(new Set(names).size).toBe(names.length)
   })
 
-  test('each task picks a flavour, a progression and a scale', async () => {
+  test('each task picks a flavour and a progression', async () => {
     const task = startTask('anything', 42)
 
     expect(FLAVOURS).toContain(task.flavour)
     expect(PROGRESSIONS).toContain(task.progression)
-    expect(SCALE_NAMES).toContain(task.homeScale)
+  })
+
+  test('the status line names the scale that is playing', async () => {
+    expect(describeTask(startTask('anything', 42), 'dorian')).toContain(' dorian · ')
   })
 
   test('different tasks land on many different flavours', async () => {
@@ -303,3 +310,52 @@ describe('variety', () => {
   })
 })
 
+describe('scales by mood', () => {
+  test('a weighted pick follows its weights and never picks a zero weight', async () => {
+    const random = seededRandom(11)
+    const picks = Array.from({ length: 4000 }, () => pickWeighted(random, { often: 3, rarely: 1, never: 0 }))
+    const often = picks.filter(name => name === 'often').length / picks.length
+
+    expect(often).toBeGreaterThan(0.7)
+    expect(often).toBeLessThan(0.8)
+    expect(picks).not.toContain('never')
+  })
+
+  test('every mood weighs its own scales, and every scale belongs to at least one mood', async () => {
+    for (const weights of Object.values(MOOD_SCALES)) {
+      expect(Object.keys(weights).length).toBeGreaterThan(0)
+      expect(Object.values(weights).every(weight => weight > 0)).toBe(true)
+    }
+    const used = new Set(Object.values(MOOD_SCALES).flatMap(weights => Object.keys(weights)))
+    expect([...used].sort()).toEqual([...SCALE_NAMES].sort())
+  })
+
+  test('the mood picks the scale from its own table and keeps it while the variant holds', async () => {
+    const random = seededRandom(3)
+    let choice = nextMood(null, 'failing', random)
+    const first = choice.scale
+    for (let i = 1; i < PHRASES_PER_VARIANT; i++) {
+      choice = nextMood(choice, 'failing', random)
+      expect(choice.scale).toBe(first)
+    }
+
+    for (const activity of Object.keys(MOOD_SCALES) as Activity[]) {
+      const scales = new Set(Array.from({ length: 300 }, () => nextMood(null, activity, random).scale))
+      expect([...scales].every(scale => scale in MOOD_SCALES[activity])).toBe(true)
+      expect(scales.size).toBeGreaterThan(1)
+    }
+  })
+
+  test('failing never sounds bright and shipping never sounds dark', async () => {
+    const random = seededRandom(5)
+    const failing = new Set(Array.from({ length: 300 }, () => nextMood(null, 'failing', random).scale))
+    const shipping = new Set(Array.from({ length: 300 }, () => nextMood(null, 'shipping', random).scale))
+
+    for (const bright of ['major', 'lydian', 'major pentatonic', 'mixolydian'] as const) {
+      expect(failing.has(bright)).toBe(false)
+    }
+    for (const dark of ['minor', 'phrygian', 'harmonic minor'] as const) {
+      expect(shipping.has(dark)).toBe(false)
+    }
+  })
+})

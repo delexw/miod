@@ -29,3 +29,16 @@ export function at<T>(items: readonly T[], index: number): T {
 export function pick<T>(random: () => number, items: readonly T[]): T {
   return at(items, Math.floor(random() * items.length))
 }
+
+export function pickWeighted<K extends string>(random: () => number, weights: Partial<Record<K, number>>): K {
+  const entries = Object.entries(weights) as [K, number][]
+  const total = entries.reduce((sum, [, weight]) => sum + weight, 0)
+  let roll = random() * total
+  for (const [key, weight] of entries) {
+    roll -= weight
+    if (roll < 0) {
+      return key
+    }
+  }
+  return at(entries, -1)[0]
+}

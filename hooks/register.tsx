@@ -4,7 +4,7 @@ import type { EngineInterface, Register, Timer } from 'claude-code'
 import { activityForCommand, activityForTool, strongestActivity } from './activity'
 import type { Activity } from './activity'
 import { drawBand } from './band'
-import { composeFinish, composeFixed, composePhrase, energyFromRate } from './compose'
+import { composeFinish, composeFixed, composePhrase, energyFromRate, soundingScale } from './compose'
 import type { Moment, Note } from './compose'
 import { nextMood } from './moods'
 import type { MoodChoice } from './moods'
@@ -14,6 +14,7 @@ import type { Fade } from './synth'
 import { describeTask, phraseSeconds, startTask } from './task'
 import { DEFAULT_WAVE, isWaveName, WAVE_NAMES } from './waves'
 import type { Task } from './task'
+import type { ScaleName } from './theory'
 import type { NowPlaying } from '../types'
 
 const isEnabled = atom({ plugin: 'miod', key: 'isEnabled' } as const, true)
@@ -101,6 +102,7 @@ async function readMoment($: EngineInterface, now: number): Promise<Moment> {
   session.moodChoice = nextMood(session.moodChoice, strongestActivity(seen), random)
   const moment: Moment = {
     mood: session.moodChoice.mood,
+    scale: session.moodChoice.scale,
     energy: energyFromRate((tokens * 60_000) / elapsed),
     contextFill: session.contextFill,
     toolCalls: session.toolCalls,
@@ -121,7 +123,7 @@ async function playNextPhrase($: EngineInterface) {
   const mood = moment.mood
   const seconds = phraseSeconds(task)
   const isFirst = session.phraseNumber === 0
-  const look = { label: `${mood.feel} · ${describeTask(task)} · energy ${Math.round(moment.energy * 100)}%`, color: mood.color }
+  const look = { label: `${mood.feel} · ${describeTask(task, soundingScale(task, moment.scale))} · energy ${Math.round(moment.energy * 100)}%`, color: mood.color }
   play($, task, composePhrase(task, session.phraseNumber, moment), seconds, look, {
     fade: isFirst ? { inSeconds: seconds / 2 } : undefined,
   })
@@ -156,10 +158,11 @@ async function stopMusic($: EngineInterface, shouldPlayFinish: boolean) {
   session.finishTimer?.cancel()
   session.finishTimer = null
   const task = session.task
-  if (task && shouldPlayFinish) {
+  const scale = session.moodChoice?.scale
+  if (task && scale && shouldPlayFinish) {
     session.lastTask = task
     const wait = Math.max(0, session.phraseEndsAt - (await $.clock.now()))
-    session.finishTimer = $.clock.after(Math.round(wait), () => playFinish($, task))
+    session.finishTimer = $.clock.after(Math.round(wait), () => playFinish($, task, scale))
   } else {
     silence()
     showWave($, null)
@@ -168,13 +171,13 @@ async function stopMusic($: EngineInterface, shouldPlayFinish: boolean) {
   session.turnId = null
 }
 
-function playFinish($: EngineInterface, task: Task) {
+function playFinish($: EngineInterface, task: Task, scale: ScaleName) {
   session.finishTimer = null
   if (session.task) {
     return
   }
   const seconds = phraseSeconds(task)
-  play($, task, composeFinish(task), seconds, FINISH_LOOK, { fade: { outSeconds: seconds / 2 } })
+  play($, task, composeFinish(task, soundingScale(task, scale)), seconds, FINISH_LOOK, { fade: { outSeconds: seconds / 2 } })
   session.finishTimer = $.clock.after(Math.round(seconds * 1000), () => {
     session.finishTimer = null
     if (!session.task) {
